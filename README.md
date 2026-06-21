@@ -208,7 +208,7 @@ Tesla-Stock-Forecasting
 │   └── model_comparison.csv
 │
 ├── Tesla_Stock_Forecasting.ipynb
-├── tesla_stock_forecasting.py
+├── Tesla_Stock_Forecasting.py
 ├── requirements.txt
 └── README.md
 ```
