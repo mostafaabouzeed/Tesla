@@ -1,91 +1,179 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+
 from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import mean_squared_error
-from sklearn.preprocessing import StandardScaler  # Import the StandardScaler for feature scaling
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from sklearn.ensemble import RandomForestRegressor
 
-# Importing Dataset
-df = pd.read_csv("TESLA.csv", index_col=['Date'], parse_dates=['Date'])
-tesla_series = df['Close']
+# ==========================
+# LOAD DATA
+# ==========================
 
-# Descriptive statistics
-dataset_stat = df.describe()
-close_stat = tesla_series.describe()
-median_tesla_close = tesla_series.median()
-mean_tesla_close = tesla_series.mean()
-std_deviation = tesla_series.std()
-print("summary of data set:", dataset_stat)
-print("summary of close col:", close_stat)
-print("Median of close col:", median_tesla_close)
-print("Mean of close col:", mean_tesla_close)
-print("Standard Deviation of close col:", std_deviation)
+df = pd.read_csv(
+    "TESLA.csv",
+    parse_dates=["Date"],
+    index_col="Date"
+)
 
-# Train-test split
-train, test = train_test_split(df, test_size=0.2, random_state=42)
+print("\nDataset Shape:")
+print(df.shape)
 
-# Linear Regression
-regr = LinearRegression()
+print("\nMissing Values:")
+print(df.isnull().sum())
 
-# Feature scaling (optional but can improve model performance)
-scaler = StandardScaler()
-x_train_scaled = scaler.fit_transform(train[['Open', 'High', 'Low', 'Volume']])
-x_test_scaled = scaler.transform(test[['Open', 'High', 'Low', 'Volume']])
+# ==========================
+# FEATURE ENGINEERING
+# ==========================
 
-y_train = np.asanyarray(train[['Close']])
-y_test = np.asanyarray(test[['Close']])
+df["Lag_1"] = df["Close"].shift(1)
+df["Lag_2"] = df["Close"].shift(2)
+df["Lag_3"] = df["Close"].shift(3)
 
-regr.fit(x_train_scaled, y_train)
+df["MA_5"] = df["Close"].rolling(5).mean()
+df["MA_20"] = df["Close"].rolling(20).mean()
 
-# Predictions
-y_hat = regr.predict(x_test_scaled)
+df["Daily_Return"] = df["Close"].pct_change()
 
-# Evaluation
-print("Mean Squared Error (MSE): %.2f" % mean_squared_error(y_test, y_hat))
-print('Variance score: %.2f' % regr.score(x_test_scaled, y_test))
+df.dropna(inplace=True)
 
-# Predict for the next year
-future_dates = pd.date_range(start=df.index[-1] + pd.DateOffset(1), periods=365, freq='D')
-future_features_scaled = scaler.transform(df[['Open', 'High', 'Low', 'Volume']].values[-1].reshape(1, -1))
-future_predictions = []
+# ==========================
+# EDA
+# ==========================
 
-for _ in range(365):
-    prediction = regr.predict(future_features_scaled)
-    future_predictions.append(prediction[0])
-    future_features_scaled[:, :-1] = np.roll(future_features_scaled[:, :-1], -1, axis=1)
-    future_features_scaled[:, -1] = prediction
+print("\nSummary Statistics")
+print(df.describe())
 
-# Create a DataFrame for the predictions with the corresponding dates
-future_df = pd.DataFrame({'Date': future_dates, 'Predicted_Close': future_predictions})
-future_df.set_index('Date', inplace=True)
+# Close Price Trend
 
-# plotting the close data
-plt.figure(figsize=(12, 6))
-plt.plot(tesla_series.index, tesla_series, label='Tesla Close Prices ($)', color='green')
-plt.title('Tesla Close Prices over the Years ')
-plt.xlabel('Date')
-plt.ylabel('Close ($)')
+plt.figure(figsize=(12,6))
+plt.plot(df.index, df["Close"])
+plt.title("Tesla Closing Price")
+plt.xlabel("Date")
+plt.ylabel("Close Price")
+plt.grid()
+plt.show()
+
+# Moving Averages
+
+plt.figure(figsize=(12,6))
+plt.plot(df["Close"], label="Close")
+plt.plot(df["MA_5"], label="MA 5")
+plt.plot(df["MA_20"], label="MA 20")
+
+plt.title("Moving Averages")
 plt.legend()
 plt.show()
-# Creating a 5day Rolling Average
-rolling_mean = tesla_series.rolling(window=5).mean()
-plt.figure(figsize=(12, 6))
-plt.plot(tesla_series.index, tesla_series, label='Tesla', color='green')
-plt.plot(rolling_mean.index, rolling_mean, label='Rolling Mean trend', color='orange')
-plt.title('Tesla Time Series with 5 Day window Rolling Mean')
-plt.xlabel('Date')
-plt.ylabel('Exchange Rate')
+
+# ==========================
+# CORRELATION
+# ==========================
+
+corr = df.corr()
+
+plt.figure(figsize=(10,8))
+plt.imshow(corr, cmap="coolwarm")
+plt.colorbar()
+plt.xticks(range(len(corr.columns)), corr.columns, rotation=90)
+plt.yticks(range(len(corr.columns)), corr.columns)
+plt.title("Correlation Matrix")
+plt.tight_layout()
+plt.show()
+
+# ==========================
+# MODELING
+# ==========================
+
+features = [
+    "Lag_1",
+    "Lag_2",
+    "Lag_3",
+    "MA_5",
+    "MA_20",
+    "Volume"
+]
+
+X = df[features]
+y = df["Close"]
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X,
+    y,
+    test_size=0.2,
+    shuffle=False
+)
+
+model = RandomForestRegressor(
+    n_estimators=300,
+    max_depth=8,
+    random_state=42
+)
+
+model.fit(X_train, y_train)
+
+predictions = model.predict(X_test)
+
+# ==========================
+# EVALUATION
+# ==========================
+
+mse = mean_squared_error(y_test, predictions)
+rmse = np.sqrt(mse)
+mae = mean_absolute_error(y_test, predictions)
+r2 = r2_score(y_test, predictions)
+
+print("\nModel Performance")
+print(f"MAE  : {mae:.2f}")
+print(f"RMSE : {rmse:.2f}")
+print(f"R²   : {r2:.4f}")
+
+# ==========================
+# ACTUAL VS PREDICTED
+# ==========================
+
+plt.figure(figsize=(14,6))
+
+plt.plot(
+    y_test.index,
+    y_test,
+    label="Actual",
+    linewidth=2
+)
+
+plt.plot(
+    y_test.index,
+    predictions,
+    label="Predicted",
+    linestyle="--"
+)
+
+plt.title("Actual vs Predicted Tesla Prices")
+plt.xlabel("Date")
+plt.ylabel("Price")
 plt.legend()
 plt.show()
-# Plotting the predictions
-plt.figure(figsize=(12, 6))
-plt.plot(df.index, tesla_series, label='Actual Close Prices ($)', color='green')
-plt.plot(future_df.index, future_df['Predicted_Close'], label='Predicted Close Prices ($)', color='red', linestyle='dashed')
-plt.title('Tesla Close Prices and Predictions')
-plt.xlabel('Date')
-plt.ylabel('Close ($)')
-plt.legend()
+
+# ==========================
+# FEATURE IMPORTANCE
+# ==========================
+
+importance = pd.DataFrame({
+    "Feature": features,
+    "Importance": model.feature_importances_
+})
+
+importance = importance.sort_values(
+    by="Importance",
+    ascending=False
+)
+
+print("\nFeature Importance")
+print(importance)
+
+plt.figure(figsize=(8,5))
+plt.barh(
+    importance["Feature"],
+    importance["Importance"]
+)
+plt.title("Feature Importance")
 plt.show()
-# Display the predicted values for the next year
-print(future_df)
