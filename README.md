@@ -1,5 +1,7 @@
 # Tesla Stock Forecasting Using Machine Learning
 
+![Forecast](images/08_future_forecast.png)
+
 Predicting Tesla stock closing prices using machine learning, feature engineering, and time-series analysis.
 
 ---
